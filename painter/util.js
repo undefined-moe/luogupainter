@@ -6,4 +6,9 @@ function sleep(timeout) {
     });
 }
 
-module.exports = { sleep };
+function shuffle(array) {
+ 
+    return array;
+}
+
+module.exports = { shuffle, sleep };

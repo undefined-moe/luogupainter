@@ -1,54 +1,61 @@
+const { existsSync } = require('fs');
+
 const
-    koa = require('koa'),
+    Koa = require('koa'),
     api = require('./api'),
-    { sleep } = require('./util'),
-    page = require('fs').readFileSync(require('path').resolve(__dirname, 'view.html')).toString(),
-    { readBase32Image } = require('./image');
+    { sleep, shuffle } = require('./util'),
+    page = require('fs').readFileSync(require('path').resolve(__dirname, 'view.html')).toString();
+
 async function getTasks(image, x, y) {
-    const board = await api.getBoard();
+    const board = (await api.getBoard()).split('\n').map(i => i.split(''));
     let tasks = [];
-    for (let i = 0; i < image.y; ++i)
-        for (let j = 0; j < image.x; ++j)
-            if (board[j + x][i + y] !== image.data[i][j])
+    for (let i = 0; i < image.length; ++i)
+        for (let j = 0; j < image[0].length; ++j) {
+            if (board[j + x][i + y] !== image[i][j])
                 tasks.push({
-                    color: image.data[i][j],
+                    color: image[i][j],
                     x: j + x,
                     y: i + y,
                 });
-    return tasks;
+        }
+    return shuffle(tasks);
 }
+
 async function daemon(config) {
-    const app = new koa();
+    const app = new Koa();
     let users = [];
+    if (existsSync('../users.json')) users = require('../users.json');
     let tasks = [];
-    let image = readBase32Image(config.path);
+    let image = require('../' + config.path);
+
     app.use(async ctx => {
-        if (ctx.query.cookie) {
-            users.push({ cookie: ctx.query.cookie, lastPaintTime: 0, fail: 0 })
+        if (ctx.query.token) {
+            users.push({ token: ctx.query.token, lastPaintTime: 0, fail: 0 })
             console.log(`Session add, current ${users.length}`);
             ctx.body = 'success';
         } else {
             ctx.body = page;
         }
     })
+
     app.listen(9999);
     tasks = await getTasks(image, config.x, config.y);
     process.on('SIGINT', () => {
-        require('fs').writeFileSync('./users', JSON.stringify(users));
+        require('fs').writeFileSync('./users.json', JSON.stringify(users));
         process.exit(0);
     })
+
     while (true) {
         while (!tasks.length) {
-            await sleep(1000);
+            await sleep(10000);
             tasks = await getTasks(image, config.x, config.y);
         }
-        while (!users.length) {
-            await sleep(1000);
-        }
-        if (new Date().getTime() - users[0].lastPaintTime <= api.delay)
-            await sleep(api.delay - (new Date().getTime() - users[0].lastPaintTime));
-        let res = await api.paint(users[0].cookie, tasks[0]);
-        users[0].lastPaintTime = new Date().getTime();
+        while (!users.length) await sleep(1000);
+        if (Date.now() - users[0].lastPaintTime <= api.delay)
+            await sleep(api.delay - (Date.now() - users[0].lastPaintTime));
+        console.log(users[0].token.split(':')[0], tasks[0]);
+        let res = await api.paint(users[0].token, tasks[0]);
+        users[0].lastPaintTime = Date.now();
         if (res.status == 200) {
             users[0].fail = 0;
             users.push(users.shift());
@@ -60,7 +67,7 @@ async function daemon(config) {
             if (users[0].fail < 3) users.push(users.shift());
             else {
                 users.shift();
-                console.log(`Session invalidate, current ${users.length}`);
+                console.log(`Session invalid, current ${users.length}`);
             }
         }
         console.log(`${tasks.length} left.`);
