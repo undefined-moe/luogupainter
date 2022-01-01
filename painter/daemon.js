@@ -11,7 +11,7 @@ async function getTasks(image, x, y) {
     let tasks = [];
     for (let i = 0; i < image.length; ++i)
         for (let j = 0; j < image[0].length; ++j) {
-            if (board[j + x][i + y] !== image[i][j])
+            if (parseInt(board[j + x][i + y], 32) !== image[i][j])
                 tasks.push({
                     color: image[i][j],
                     x: j + x,
@@ -24,7 +24,7 @@ async function getTasks(image, x, y) {
 async function daemon(config) {
     const app = new Koa();
     let users = [];
-    if (existsSync('../users.json')) users = require('../users.json');
+    if (existsSync(__dirname + '/../users.json')) users = require('../users.json');
     let tasks = [];
     let image = require('../' + config.path);
 
